@@ -418,8 +418,8 @@
     }
     .envelope-close:hover { color: #fff; }
 
-    /* Audio hint */
-    .audio-hint {
+    /* Music toggle */
+    .music-toggle {
       position: fixed;
       bottom: 24px;
       left: 50%;
@@ -437,10 +437,41 @@
       cursor: pointer;
       transition: all 0.3s;
       box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
-    .audio-hint:hover {
+    .music-toggle:hover {
       background: rgba(255,255,255,0.9);
       transform: translateX(-50%) scale(1.03);
+    }
+    .music-toggle .icon {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+    }
+    .music-toggle.playing .bar {
+      animation: musicBar 0.5s ease infinite alternate;
+    }
+    .music-toggle.playing .bar:nth-child(2) { animation-delay: 0.15s; }
+    .music-toggle.playing .bar:nth-child(3) { animation-delay: 0.3s; }
+    .music-toggle.muted .bar { animation: none; }
+    .music-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 2px;
+      height: 16px;
+    }
+    .bar {
+      width: 3px;
+      background: #e91e63;
+      border-radius: 2px;
+    }
+    .bar:nth-child(1) { height: 8px; }
+    .bar:nth-child(2) { height: 14px; }
+    .bar:nth-child(3) { height: 6px; }
+    @keyframes musicBar {
+      to { transform: scaleY(0.3); }
     }
 
     /* Toast */
@@ -552,8 +583,13 @@
     </div>
   </div>
 
-  <!-- Audio hint -->
-  <div class="audio-hint" onclick="playMusic(event)">🎵 点这里播放生日歌</div>
+  <!-- Music toggle -->
+  <div class="music-toggle muted" id="musicToggle" onclick="toggleMusic(event)" title="音乐开关">
+    <div class="music-bars">
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    </div>
+    <span id="musicLabel">音乐已暂停</span>
+  </div>
 
   <script>
     // === Typewriter ===
@@ -737,32 +773,33 @@
       setTimeout(() => t.remove(), 2500);
     }
 
-    // === Music ===
+    // === Music (auto-play with loop) ===
     let audioCtx = null;
-    function playMusic(e) {
-      e.stopPropagation();
-      if (audioCtx) {
-        playMelody();
-        return;
-      }
+    let musicPlaying = false;
+    let loopTimer = null;
+    const SONG_DURATION = 15000; // ~15 seconds per loop
+
+    const notes = [
+      { f: 392, d: 0.28 },{ f: 392, d: 0.18 },{ f: 440, d: 0.38 },{ f: 392, d: 0.38 },{ f: 523, d: 0.38 },{ f: 494, d: 0.55 },
+      { f: 392, d: 0.28 },{ f: 392, d: 0.18 },{ f: 440, d: 0.38 },{ f: 392, d: 0.38 },{ f: 587, d: 0.38 },{ f: 523, d: 0.55 },
+      { f: 392, d: 0.28 },{ f: 392, d: 0.18 },{ f: 784, d: 0.38 },{ f: 659, d: 0.38 },{ f: 523, d: 0.38 },{ f: 494, d: 0.38 },{ f: 440, d: 0.55 },
+      { f: 698, d: 0.28 },{ f: 698, d: 0.18 },{ f: 659, d: 0.38 },{ f: 523, d: 0.38 },{ f: 587, d: 0.38 },{ f: 523, d: 0.7 },
+    ];
+
+    function initAudio() {
+      if (audioCtx) return;
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      playMelody();
     }
 
     function playMelody() {
-      const notes = [
-        { f: 392, d: 0.28 },{ f: 392, d: 0.18 },{ f: 440, d: 0.38 },{ f: 392, d: 0.38 },{ f: 523, d: 0.38 },{ f: 494, d: 0.55 },
-        { f: 392, d: 0.28 },{ f: 392, d: 0.18 },{ f: 440, d: 0.38 },{ f: 392, d: 0.38 },{ f: 587, d: 0.38 },{ f: 523, d: 0.55 },
-        { f: 392, d: 0.28 },{ f: 392, d: 0.18 },{ f: 784, d: 0.38 },{ f: 659, d: 0.38 },{ f: 523, d: 0.38 },{ f: 494, d: 0.38 },{ f: 440, d: 0.55 },
-        { f: 698, d: 0.28 },{ f: 698, d: 0.18 },{ f: 659, d: 0.38 },{ f: 523, d: 0.38 },{ f: 587, d: 0.38 },{ f: 523, d: 0.7 },
-      ];
-      let t = audioCtx.currentTime;
+      if (!audioCtx || !musicPlaying) return;
+      const t = audioCtx.currentTime;
       notes.forEach(({ f, d }) => {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.type = 'triangle';
         osc.frequency.value = f;
-        gain.gain.setValueAtTime(0.25, t);
+        gain.gain.setValueAtTime(0.22, t);
         gain.gain.exponentialRampToValueAtTime(0.01, t + d);
         osc.connect(gain);
         gain.connect(audioCtx.destination);
@@ -770,11 +807,68 @@
         osc.stop(t + d);
         t += d + 0.04;
       });
-
-      const hint = document.querySelector('.audio-hint');
-      hint.textContent = '🎵 生日快乐歌正在播放 ~ ♪';
-      setTimeout(() => { hint.textContent = '🎵 再点一次重播生日歌'; }, 15000);
+      loopTimer = setTimeout(playMelody, SONG_DURATION);
     }
+
+    function startMusic() {
+      if (musicPlaying) return;
+      initAudio();
+      musicPlaying = true;
+      updateMusicUI();
+      playMelody();
+    }
+
+    function stopMusic() {
+      musicPlaying = false;
+      clearTimeout(loopTimer);
+      updateMusicUI();
+    }
+
+    function toggleMusic(e) {
+      e.stopPropagation();
+      initAudio();
+      if (musicPlaying) {
+        stopMusic();
+      } else {
+        startMusic();
+      }
+    }
+
+    function updateMusicUI() {
+      const toggle = document.getElementById('musicToggle');
+      const label = document.getElementById('musicLabel');
+      if (musicPlaying) {
+        toggle.classList.remove('muted');
+        toggle.classList.add('playing');
+        label.textContent = '🎵 正在播放';
+      } else {
+        toggle.classList.remove('playing');
+        toggle.classList.add('muted');
+        label.textContent = '音乐已暂停';
+      }
+    }
+
+    // Try auto-play on load (may be blocked by browser)
+    window.addEventListener('DOMContentLoaded', function() {
+      initAudio();
+      if (audioCtx.state === 'running') {
+        startMusic();
+      } else {
+        // Browser blocked autoplay — resume on first user interaction
+        function resumeOnInteract() {
+          if (musicPlaying) return;
+          audioCtx.resume().then(() => {
+            startMusic();
+          });
+          document.removeEventListener('click', resumeOnInteract);
+          document.removeEventListener('touchstart', resumeOnInteract);
+          document.removeEventListener('keydown', resumeOnInteract);
+        }
+        document.addEventListener('click', resumeOnInteract);
+        document.addEventListener('touchstart', resumeOnInteract);
+        document.addEventListener('keydown', resumeOnInteract);
+      }
+    });
   </script>
 </body>
 </html>
